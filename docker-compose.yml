@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: banco-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: banco
+      POSTGRES_USER: banco
+      POSTGRES_PASSWORD: banco
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: banco-api
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
+    ports:
+      - "8080:8080"
+volumes:
+  pgdata:

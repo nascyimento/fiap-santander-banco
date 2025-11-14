@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <title>Banco — Demo API</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root{
+          --bg:#0f172a;        /* slate-900 */
+          --panel:#111827;     /* gray-900 */
+          --muted:#94a3b8;     /* slate-400 */
+          --text:#e5e7eb;      /* gray-200 */
+          --accent:#22c55e;    /* green-500 */
+          --accent-2:#3b82f6;  /* blue-500 */
+          --danger:#ef4444;    /* red-500 */
+          --card:#0b1224;      /* dark blue-ish */
+          --input:#0b1224;
+          --border:#1f2937;
+          --shadow: 0 10px 25px rgba(0,0,0,.25);
+          --radius:16px;
+        }
+        *{box-sizing:border-box}
+        body{
+          margin:0;
+          background: radial-gradient(1200px 600px at 20% -10%, rgba(59,130,246,.15), transparent 60%),
+                      radial-gradient(1000px 500px at 120% 10%, rgba(34,197,94,.12), transparent 60%),
+                      var(--bg);
+          color:var(--text);
+          font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+          line-height:1.45;
+        }
+        header{
+          padding:24px 20px;
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:12px;
+        }
+        .brand{
+          display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;
+        }
+        .brand .dot{width:10px;height:10px;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+        .container{max-width:1100px;margin:0 auto;padding:0 20px 40px}
+        .grid{display:grid;gap:20px}
+        @media(min-width:900px){ .grid{grid-template-columns:1fr 1fr} }
+
+        .card{
+          background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0));
+          border:1px solid var(--border);
+          border-radius:var(--radius);
+          box-shadow:var(--shadow);
+          overflow:hidden;
+        }
+        .card .head{
+          padding:16px 18px;border-bottom:1px solid var(--border);
+          display:flex;align-items:center;justify-content:space-between;gap:10px
+        }
+        .card .head h2{margin:0;font-size:16px}
+        .card .body{padding:18px}
+        .muted{color:var(--muted);font-size:12px}
+
+        .row{display:grid;gap:10px;margin-bottom:12px}
+        @media(min-width:700px){ .row.cols-2{grid-template-columns:1fr 1fr} .row.cols-3{grid-template-columns:1fr 1fr 1fr} }
+        label{font-size:12px;color:var(--muted)}
+        input, select{
+          width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+          background:var(--input);color:var(--text);outline:none
+        }
+        input:focus,select:focus{border-color:var(--accent-2)}
+        .actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:6px}
+        button{
+          padding:10px 14px;border:none;border-radius:10px;color:white;cursor:pointer;
+          background:linear-gradient(135deg,var(--accent-2),#2563eb);
+        }
+        button.secondary{background:#1f2937}
+        button.danger{background:var(--danger)}
+        button:disabled{opacity:.6;cursor:not-allowed}
+
+        table{width:100%;border-collapse:collapse}
+        th,td{padding:10px 8px;border-bottom:1px solid var(--border);font-size:14px}
+        th{text-align:left;color:var(--muted);font-weight:600}
+
+        .toast{
+          position:fixed;right:16px;bottom:16px;background:#111827;border:1px solid var(--border);
+          padding:12px 14px;border-radius:12px;box-shadow:var(--shadow);color:var(--text);opacity:0;transform:translateY(20px);
+          transition:all .25s ease;max-width:320px
+        }
+        .toast.show{opacity:1;transform:translateY(0)}
+        .toast.ok{border-color:rgba(34,197,94,.5)}
+        .toast.err{border-color:rgba(239,68,68,.5)}
+
+        .badge{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+    </style>
+</head>
+<body>
+<header>
+    <div class="brand"><span class="dot"></span> Banco — Demo APIs</div>
+    <div class="muted">Spring Boot • H2 • REST</div>
+</header>
+
+<div class="container">
+    <div class="grid">
+        <!-- USUÁRIOS -->
+        <section class="card">
+            <div class="head">
+                <h2>Usuários</h2>
+                <button class="secondary" id="btnReloadUsers">Recarregar</button>
+            </div>
+            <div class="body">
+                <form id="formUser">
+                    <div class="row cols-2">
+                        <div>
+                            <label>Nome</label>
+                            <input type="text" id="u_nome" placeholder="Ex.: Alice Silva" required />
+                        </div>
+                        <div>
+                            <label>CPF</label>
+                            <input type="text" id="u_cpf" placeholder="Somente números" required />
+                        </div>
+                        <div>
+                            <label>E-mail</label>
+                            <input type="email" id="u_email" placeholder="email@dominio.com" required />
+                        </div>
+                        <div>
+                            <label>Senha</label>
+                            <input type="password" id="u_senha" placeholder="••••••" required />
+                        </div>
+                        <div>
+                            <label>Tipo</label>
+                            <select id="u_tipo">
+                                <option value="COMUM">COMUM</option>
+                                <option value="ADMIN">ADMIN</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button type="submit">Inserir Usuário</button>
+                    </div>
+                </form>
+
+                <div class="row" style="margin-top:16px">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>ID</th><th>Nome</th><th>CPF</th><th>E-mail</th><th>Tipo</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tblUsers"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- CONTAS -->
+        <section class="card">
+            <div class="head">
+                <h2>Contas</h2>
+                <button class="secondary" id="btnReloadAccounts">Recarregar</button>
+            </div>
+            <div class="body">
+                <form id="formConta">
+                    <div class="row cols-3">
+                        <div>
+                            <label>Número</label>
+                            <input type="number" id="c_numero" required />
+                        </div>
+                        <div>
+                            <label>Agência</label>
+                            <input type="text" id="c_agencia" required />
+                        </div>
+                        <div>
+                            <label>CPF Titular</label>
+                            <input type="text" id="c_cpf" required />
+                        </div>
+                        <div>
+                            <label>Nome Titular</label>
+                            <input type="text" id="c_nome" required />
+                        </div>
+                        <div>
+                            <label>Tipo de Conta</label>
+                            <select id="c_tipo">
+                                <option value="CONTA_CORRENTE">CONTA_CORRENTE</option>
+                                <option value="CONTA_POUPANCA">CONTA_POUPANCA</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Endereço</label>
+                            <input type="text" id="c_endereco" />
+                        </div>
+                        <div>
+                            <label>Saldo</label>
+                            <input type="number" step="0.01" id="c_saldo" value="0.00" required />
+                        </div>
+                        <div>
+                            <label>Usuário (ID)</label>
+                            <input type="number" id="c_usuarioId" placeholder="ID existente em usuários" />
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button type="submit">Inserir Conta</button>
+                    </div>
+                </form>
+
+                <div class="row" style="margin-top:16px">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>ID</th><th>Número</th><th>Agência</th><th>CPF</th><th>Nome</th><th>Tipo</th><th>Saldo</th><th>Usuário</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tblContas"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+    // ============================
+    // helpers simples
+    // ============================
+    const api = {
+      usuarios: '/usuarios',
+      contas: '/contas'
+    };
+
+    const toastEl = document.getElementById('toast');
+    function toast(msg, type='ok'){
+      toastEl.className = 'toast show ' + (type==='err'?'err':'ok');
+      toastEl.textContent = msg;
+      setTimeout(()=> toastEl.classList.remove('show'), 2600);
+    }
+
+    async function jsonFetch(url, opts={}){
+      const res = await fetch(url, {
+        headers: {'Content-Type': 'application/json'},
+        ...opts
+      });
+      if(!res.ok){
+        const text = await res.text().catch(()=> '');
+        throw new Error(text || ('HTTP '+res.status));
+      }
+      return res.status === 204 ? null : res.json();
+    }
+
+    // ============================
+    // USUÁRIOS
+    // ============================
+    async function loadUsers(){
+      const data = await jsonFetch(api.usuarios);
+      const tbody = document.getElementById('tblUsers');
+      tbody.innerHTML = '';
+      data.forEach(u=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${u.id ?? '-'}</td>
+          <td>${u.nome}</td>
+          <td><span class="badge">${u.cpf}</span></td>
+          <td>${u.email}</td>
+          <td>${u.tipo}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function submitUser(e){
+      e.preventDefault();
+      const payload = {
+        nome:  document.getElementById('u_nome').value.trim(),
+        cpf:   document.getElementById('u_cpf').value.trim(),
+        email: document.getElementById('u_email').value.trim(),
+        senha: document.getElementById('u_senha').value,
+        tipo:  document.getElementById('u_tipo').value
+      };
+      try{
+        await jsonFetch(api.usuarios, {method:'POST', body: JSON.stringify(payload)});
+        toast('Usuário inserido com sucesso!');
+        e.target.reset();
+        await loadUsers();
+      }catch(err){
+        toast('Erro ao inserir usuário: ' + err.message, 'err');
+      }
+    }
+
+    // ============================
+    // CONTAS
+    // ============================
+    async function loadContas(){
+      const data = await jsonFetch(api.contas);
+      const tbody = document.getElementById('tblContas');
+      tbody.innerHTML = '';
+      data.forEach(c=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${c.id ?? '-'}</td>
+          <td>${c.numero}</td>
+          <td>${c.agencia}</td>
+          <td><span class="badge">${c.cpf}</span></td>
+          <td>${c.nome}</td>
+          <td>${c.tipoDeConta}</td>
+          <td>R$ ${Number(c.saldo ?? 0).toFixed(2)}</td>
+          <td>${c.usuarioId ?? '-'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function submitConta(e){
+      e.preventDefault();
+      const payload = {
+        numero: Number(document.getElementById('c_numero').value),
+        agencia: document.getElementById('c_agencia').value.trim(),
+        cpf: document.getElementById('c_cpf').value.trim(),
+        nome: document.getElementById('c_nome').value.trim(),
+        tipoDeConta: document.getElementById('c_tipo').value,
+        endereco: document.getElementById('c_endereco').value.trim(),
+        saldo: Number(document.getElementById('c_saldo').value),
+        usuarioId: document.getElementById('c_usuarioId').value ? Number(document.getElementById('c_usuarioId').value) : null
+      };
+      try{
+        await jsonFetch(api.contas, {method:'POST', body: JSON.stringify(payload)});
+        toast('Conta inserida com sucesso!');
+        e.target.reset();
+        await loadContas();
+      }catch(err){
+        toast('Erro ao inserir conta: ' + err.message, 'err');
+      }
+    }
+
+    // ============================
+    // boot
+    // ============================
+    document.getElementById('formUser').addEventListener('submit', submitUser);
+    document.getElementById('formConta').addEventListener('submit', submitConta);
+    document.getElementById('btnReloadUsers').addEventListener('click', loadUsers);
+    document.getElementById('btnReloadAccounts').addEventListener('click', loadContas);
+
+    // carrega tabelas na primeira visita
+    (async ()=> {
+      try { await loadUsers(); } catch(e){ toast('Falha ao listar usuários', 'err'); }
+      try { await loadContas(); } catch(e){ toast('Falha ao listar contas', 'err'); }
+    })();
+</script>
+</body>
+</html>
