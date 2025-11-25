@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ECS Fargate deployment for Banco API (Spring Boot + H2) with ECR repository.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC onde a aplicação rodará.
+
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Sub-redes públicas (mínimo 2) com rota para a Internet.
+
+  RepositoryName:
+    Type: String
+    Default: banco-api
+    Description: Nome do repositório ECR para a imagem da API.
+
+  ImageTag:
+    Type: String
+    Default: latest
+    Description: Tag da imagem a ser executada.
+
+  ContainerPort:
+    Type: Number
+    Default: 8080
+    Description: Porta HTTP exposta pela aplicação Spring Boot.
+
+  TaskCpu:
+    Type: Number
+    Default: 512
+    Description: CPU da task (em unidades Fargate).
+
+  TaskMemory:
+    Type: Number
+    Default: 1024
+    Description: Memória da task (MB).
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: Número de tasks em execução.
+
+  AllowedCidrIngress:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR permitido para acessar a API.
+
+Resources:
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref RepositoryName
+      ImageTagMutability: IMMUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              { "rulePriority": 1, "description": "Manter apenas 20 imagens mais recentes", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 20 }, "action": { "type": "expire" } }
+            ]
+          }
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: banco-api
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/banco-api
+      RetentionInDays: 14
+
+  SgTask:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Permite acesso HTTP à API
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          CidrIp: !Ref AllowedCidrIngress
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: banco-api
+      RequiresCompatibilities: [FARGATE]
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: banco-api
+          Image: !Sub "${EcrRepository.RepositoryUri}:${ImageTag}"
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Protocol: tcp
+          Environment:
+            - Name: SPRING_PROFILES_ACTIVE
+              Value: h2
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      PlatformVersion: 1.4.0
+      TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: !Ref PublicSubnetIds
+          SecurityGroups: [!Ref SgTask]
+
+Outputs:
+  RepositoryUri:
+    Description: URI do repositório ECR para push da imagem.
+    Value: !GetAtt EcrRepository.RepositoryUri
+
+  PushCommands:
+    Description: "Comandos de push da imagem (ajuste a região e tag se necessário)."
+    Value: !Sub |
+      aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+      docker tag banco-api:${ImageTag} ${EcrRepository.RepositoryUri}:${ImageTag}
+      docker push ${EcrRepository.RepositoryUri}:${ImageTag}
+
+  PublicIpHint:
+    Description: "Após o deploy, obtenha o IP público da task:"
+    Value: !Sub "aws ecs describe-tasks --cluster banco-api --tasks <task-id> --query \"tasks[0].attachments[0].details[?name=='publicIPv4Address'].value\" --output text"
