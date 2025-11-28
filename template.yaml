@@ -5,46 +5,62 @@ Description: ECS Fargate deployment for Banco API (Spring Boot + H2) with ECR re
 Parameters:
   VpcId:
     Type: AWS::EC2::VPC::Id
-    Description: VPC onde a aplicação rodará.
+    Description: VPC where the application will run.
 
   PublicSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Sub-redes públicas (mínimo 2) com rota para a Internet.
+    Description: Public subnets (minimum 2) with a route to the internet.
 
   RepositoryName:
     Type: String
     Default: banco-api
-    Description: Nome do repositório ECR para a imagem da API.
+    Description: Name of the ECR repository for the API image.
 
   ImageTag:
     Type: String
     Default: latest
-    Description: Tag da imagem a ser executada.
+    Description: Image tag to run.
 
   ContainerPort:
     Type: Number
     Default: 8080
-    Description: Porta HTTP exposta pela aplicação Spring Boot.
+    Description: HTTP port exposed by the Spring Boot application.
 
   TaskCpu:
     Type: Number
     Default: 512
-    Description: CPU da task (em unidades Fargate).
+    Description: Task CPU (in Fargate units).
 
   TaskMemory:
     Type: Number
     Default: 1024
-    Description: Memória da task (MB).
-
-  DesiredCount:
-    Type: Number
-    Default: 1
-    Description: Número de tasks em execução.
+    Description: Task memory (MB).
 
   AllowedCidrIngress:
     Type: String
     Default: 0.0.0.0/0
-    Description: CIDR permitido para acessar a API.
+    Description: Allowed CIDR to access the API.
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - qa
+      - prod
+    Description: Deployment environment used to pick task sizing and deployment health.
+
+Mappings:
+  EnvSettings:
+    dev:
+      DesiredCount: 1
+      MinimumHealthyPercent: 100
+    qa:
+      DesiredCount: 2
+      MinimumHealthyPercent: 100
+    prod:
+      DesiredCount: 4
+      MinimumHealthyPercent: 75
 
 Resources:
   EcrRepository:
@@ -56,7 +72,7 @@ Resources:
         LifecyclePolicyText: |
           {
             "rules": [
-              { "rulePriority": 1, "description": "Manter apenas 20 imagens mais recentes", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 20 }, "action": { "type": "expire" } }
+              { "rulePriority": 1, "description": "Keep only the 20 most recent images", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 20 }, "action": { "type": "expire" } }
             ]
           }
 
@@ -74,7 +90,7 @@ Resources:
   SgTask:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Permite acesso HTTP à API
+      GroupDescription: 'Allows HTTP access to the API'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -138,10 +154,13 @@ Resources:
     Type: AWS::ECS::Service
     Properties:
       Cluster: !Ref Cluster
-      DesiredCount: !Ref DesiredCount
+      DesiredCount: !FindInMap [EnvSettings, !Ref Environment, DesiredCount]
       LaunchType: FARGATE
       PlatformVersion: 1.4.0
       TaskDefinition: !Ref TaskDefinition
+      DeploymentConfiguration:
+        MinimumHealthyPercent: !FindInMap [EnvSettings, !Ref Environment, MinimumHealthyPercent]
+        MaximumPercent: 200
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
@@ -150,16 +169,16 @@ Resources:
 
 Outputs:
   RepositoryUri:
-    Description: URI do repositório ECR para push da imagem.
+    Description: URI of the ECR repository for pushing the image.
     Value: !GetAtt EcrRepository.RepositoryUri
 
   PushCommands:
-    Description: "Comandos de push da imagem (ajuste a região e tag se necessário)."
+    Description: "Image push commands (adjust region and tag if needed)."
     Value: !Sub |
       aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
       docker tag banco-api:${ImageTag} ${EcrRepository.RepositoryUri}:${ImageTag}
       docker push ${EcrRepository.RepositoryUri}:${ImageTag}
 
   PublicIpHint:
-    Description: "Após o deploy, obtenha o IP público da task:"
+    Description: "After deployment, retrieve the task's public IP:"
     Value: !Sub "aws ecs describe-tasks --cluster banco-api --tasks <task-id> --query \"tasks[0].attachments[0].details[?name=='publicIPv4Address'].value\" --output text"
