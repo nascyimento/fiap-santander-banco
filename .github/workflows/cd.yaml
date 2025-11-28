@@ -6,19 +6,97 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     environment: dev
-    env:
-      CLASS: aula-8-gh-actions
-      AWS_REGION: us-east-1
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
-      - name: Print ENV
-        run: printenv
+        
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Build Docker image
+        run: |
+          aws ecr get-login-password --region ${{ vars.AWS_REGION }} | docker login --username AWS --password-stdin 014097726604.dkr.ecr.us-east-1.amazonaws.com
+          docker build -t banco-spring-api:${GITHUB_SHA} .
+          docker tag banco-spring-api:${GITHUB_SHA} 014097726604.dkr.ecr.us-east-1.amazonaws.com/banco-spring-api:${GITHUB_SHA}
+          docker push 014097726604.dkr.ecr.us-east-1.amazonaws.com/banco-spring-api:${GITHUB_SHA}
+
+      - name: Build SAM
+        run: sam build
+
+      - name: Move SAM Artifact
+        run: |
+          mv .aws-sam aws-artifact
+
+      - name: Publish SAM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sam-artifact
+          path: aws-artifact/
+
+      - name: Upload template.yaml and samconfig.toml
+        uses: actions/upload-artifact@v4
+        with:
+          name: sam-templates
+          path: |
+            template.yaml
+            samconfig.toml
+
+  deploy-dev:
+    needs: build
+    environment: dev
+    env:
+      STACK_NAME: banco-api-dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download SAM Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sam-artifact
+          path: aws-artifact/
+
+      - name: Move to SAM folder
+        run: |
+          mv aws-artifact .aws-sam
+
+      - name: Download template.yaml and samconfig.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: sam-templates
+          path: .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+        
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Deploy to Dev
+        env:
+          STACK_NAME: banco-api-dev
+        run: |
+          sam deploy --stack-name $STACK_NAME  --parameter-overrides ImageUri=014097726604.dkr.ecr.us-east-1.amazonaws.com/banco-spring-api:${GITHUB_SHA} Environment=dev

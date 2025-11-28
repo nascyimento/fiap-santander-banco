@@ -1,0 +1,27 @@
+# More information about the configuration file can be found here:
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+version = 0.1
+
+[default.validate.parameters]
+lint = true
+
+[default.build.parameters]
+parallel = true
+cached = false
+
+[default.package.parameters]
+s3_prefix = "banco-api"
+output_template_file = "packaged-template.yaml"
+resolve_s3 = false
+no_progressbar = true
+
+[default.deploy.parameters]
+stack_name = "banco-api"
+s3_prefix = "banco-api"
+region = "us-east-1"
+capabilities = ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"]
+on_failure = "DELETE"
+resolve_s3 = true
+confirm_changeset = false
+fail_on_empty_changeset = false
+no_progressbar = true

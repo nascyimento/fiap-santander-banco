@@ -6,20 +6,16 @@ Parameters:
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: VPC where the application will run.
+    Default: 'vpc-0fd723bf24d74c0bf'
 
   PublicSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Public subnets (minimum 2) with a route to the internet.
+    Default: 'subnet-04088fe2dbf931c69,subnet-0135454128c419b7d'
 
-  RepositoryName:
+  ImageUri:
     Type: String
-    Default: banco-api
-    Description: Name of the ECR repository for the API image.
-
-  ImageTag:
-    Type: String
-    Default: latest
-    Description: Image tag to run.
+    Description: URI of the Docker image in ECR.
 
   ContainerPort:
     Type: Number
@@ -63,19 +59,6 @@ Mappings:
       MinimumHealthyPercent: 75
 
 Resources:
-  EcrRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Ref RepositoryName
-      ImageTagMutability: IMMUTABLE
-      LifecyclePolicy:
-        LifecyclePolicyText: |
-          {
-            "rules": [
-              { "rulePriority": 1, "description": "Keep only the 20 most recent images", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 20 }, "action": { "type": "expire" } }
-            ]
-          }
-
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -135,7 +118,7 @@ Resources:
       TaskRoleArn: !GetAtt TaskRole.Arn
       ContainerDefinitions:
         - Name: banco-api
-          Image: !Sub "${EcrRepository.RepositoryUri}:${ImageTag}"
+          Image: !Ref ImageUri
           Essential: true
           PortMappings:
             - ContainerPort: !Ref ContainerPort
@@ -166,19 +149,3 @@ Resources:
           AssignPublicIp: ENABLED
           Subnets: !Ref PublicSubnetIds
           SecurityGroups: [!Ref SgTask]
-
-Outputs:
-  RepositoryUri:
-    Description: URI of the ECR repository for pushing the image.
-    Value: !GetAtt EcrRepository.RepositoryUri
-
-  PushCommands:
-    Description: "Image push commands (adjust region and tag if needed)."
-    Value: !Sub |
-      aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
-      docker tag banco-api:${ImageTag} ${EcrRepository.RepositoryUri}:${ImageTag}
-      docker push ${EcrRepository.RepositoryUri}:${ImageTag}
-
-  PublicIpHint:
-    Description: "After deployment, retrieve the task's public IP:"
-    Value: !Sub "aws ecs describe-tasks --cluster banco-api --tasks <task-id> --query \"tasks[0].attachments[0].details[?name=='publicIPv4Address'].value\" --output text"
